@@ -138,11 +138,10 @@ class AdaFactorBase(keras.optimizers.Optimizer):
 
     @property
     def beta2(self):
-        if self._beta2 is None:
-            iterations = K.cast(self.iterations + 1, K.floatx())
-            return 1.0 - K.pow(iterations, -0.8)
-        else:
+        if self._beta2 is not None:
             return self._beta2
+        iterations = K.cast(self.iterations + 1, K.floatx())
+        return 1.0 - K.pow(iterations, -0.8)
 
     def factored_shape(self, shape):
         if len(shape) < 2:
@@ -201,7 +200,7 @@ class AdaFactorV1(AdaFactorBase):
             factored_shape = self.factored_shape(shape)
             if factored_shape is None:
                 # 定义参数
-                v = K.zeros(shape, dtype=dtype, name="v_" + str(i))
+                v = K.zeros(shape, dtype=dtype, name=f"v_{str(i)}")
                 self.weights.append(v)
                 # 定义更新
                 v_t = self.beta2 * v + (1.0 - self.beta2) * g2
@@ -209,8 +208,8 @@ class AdaFactorV1(AdaFactorBase):
             else:
                 # 定义参数
                 shape1, axis1, shape2, axis2 = factored_shape
-                vr = K.zeros(shape1, dtype=dtype, name="vr_" + str(i))
-                vc = K.zeros(shape2, dtype=dtype, name="vc_" + str(i))
+                vr = K.zeros(shape1, dtype=dtype, name=f"vr_{str(i)}")
+                vc = K.zeros(shape2, dtype=dtype, name=f"vc_{str(i)}")
                 self.weights.extend([vr, vc])
                 # 定义更新
                 g2r = K.mean(g2, axis=axis1, keepdims=True)
@@ -228,7 +227,7 @@ class AdaFactorV1(AdaFactorBase):
             # 增量滑动
             if self.beta1 > 0.0:
                 # 定义参数
-                m = K.zeros(shape, dtype=dtype, name="m_" + str(i))
+                m = K.zeros(shape, dtype=dtype, name=f"m_{str(i)}")
                 self.weights.append(m)
                 # 定义更新
                 m_t = self.beta1 * m + (1.0 - self.beta1) * u
@@ -708,6 +707,8 @@ def extend_with_gradient_accumulation_v2(BaseOptimizer):
 def extend_with_lookahead(BaseOptimizer):
     """返回新的优化器类，加入look ahead"""
 
+
+
     class NewOptimizer(BaseOptimizer):
         """带有look ahead的优化器
         https://arxiv.org/abs/1907.08610
@@ -726,9 +727,10 @@ def extend_with_lookahead(BaseOptimizer):
             k, alpha = self.steps_per_slow_update, self.slow_step_size
             cond = K.equal(self.iterations % k, 0)
             slow_vars = [
-                K.zeros(K.int_shape(p), dtype=K.dtype(p), name="slow_var_%s" % i)
+                K.zeros(K.int_shape(p), dtype=K.dtype(p), name=f"slow_var_{i}")
                 for i, p in enumerate(params)
             ]
+
 
             with tf.control_dependencies(updates):
                 slow_updates = [
@@ -750,6 +752,7 @@ def extend_with_lookahead(BaseOptimizer):
             }
             base_config = super(NewOptimizer, self).get_config()
             return dict(list(base_config.items()) + list(config.items()))
+
 
     return NewOptimizer
 
@@ -957,6 +960,8 @@ def extend_with_exponential_moving_average(BaseOptimizer):
 def extend_with_exponential_moving_average_v2(BaseOptimizer):
     """返回新的优化器类，加入EMA（权重滑动平均）"""
 
+
+
     class NewOptimizer(BaseOptimizer):
         """带EMA（权重滑动平均）的优化器"""
 
@@ -967,9 +972,7 @@ def extend_with_exponential_moving_average_v2(BaseOptimizer):
         def _create_slots(self, var_list):
             super(NewOptimizer, self)._create_slots(var_list)
             self.model_weights = var_list
-            self.ema_weights = []
-            for var in var_list:
-                self.ema_weights.append(self.add_slot(var, "ema"))
+            self.ema_weights = [self.add_slot(var, "ema") for var in var_list]
 
         def _resource_apply_dense(self, grad, var):
             op = super(NewOptimizer, self)._resource_apply_dense(grad, var)
@@ -1007,6 +1010,7 @@ def extend_with_exponential_moving_average_v2(BaseOptimizer):
         def reset_old_weights(self):
             """恢复模型到旧权重。"""
             K.batch_set_value(zip(self.model_weights, self.old_weights))
+
 
     return NewOptimizer
 
