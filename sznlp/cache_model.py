@@ -168,30 +168,35 @@ class Misaka_decoder_cache(Misaka_decoder):
 
         self_attention_1_name = "Misaka-Dncoder-%d-GatedAttentionUnit-1" % index
         k_cache_1 = keras.layers.Input(
-            [None, self.attention_key_size], name=self_attention_1_name + "-kcache"
+            [None, self.attention_key_size], name=f"{self_attention_1_name}-kcache"
         )
+
         self.cache_inputs.append(k_cache_1)
         v_cache_1 = keras.layers.Input(
-            [None, self.intermediate_size], name=self_attention_1_name + "-vcache"
+            [None, self.intermediate_size], name=f"{self_attention_1_name}-vcache"
         )
+
         self.cache_inputs.append(v_cache_1)
 
         cross_attention_name = "Misaka-Dncoder-%d-GatedAttentionUnit-cross" % index
 
         c_cache_cross = keras.layers.Input(
             [None, self.intermediate_size + self.attention_key_size],
-            name=cross_attention_name + "-cache",
+            name=f"{cross_attention_name}-cache",
         )
+
         self.cache_inputs.append(c_cache_cross)
 
         self_attention_2_name = "Misaka-Dncoder-%d-GatedAttentionUnit-2" % index
         k_cache_2 = keras.layers.Input(
-            [None, self.attention_key_size], name=self_attention_2_name + "-kcache"
+            [None, self.attention_key_size], name=f"{self_attention_2_name}-kcache"
         )
+
         self.cache_inputs.append(k_cache_2)
         v_cache_2 = keras.layers.Input(
-            [None, self.intermediate_size], name=self_attention_2_name + "-vcache"
+            [None, self.intermediate_size], name=f"{self_attention_2_name}-vcache"
         )
+
         self.cache_inputs.append(v_cache_2)
 
         attention_mask = None  # self.compute_attention_bias(index)
@@ -230,17 +235,19 @@ class Misaka_decoder_cache(Misaka_decoder):
             inputs=x,
             layer=Dropout,
             rate=self.dropout_rate,
-            name="%s-Dropout" % self_attention_1_name,
+            name=f"{self_attention_1_name}-Dropout",
         )
-        x = self.apply(inputs=[xi, x], layer=Add, name="%s-Add" % self_attention_1_name)
+
+        x = self.apply(inputs=[xi, x], layer=Add, name=f"{self_attention_1_name}-Add")
         x = self.apply(
             inputs=x,
             layer=LayerNormalization,
             zero_mean=False,
             scale=False,
             offset=False,
-            name="%s-Norm" % self_attention_1_name,
+            name=f"{self_attention_1_name}-Norm",
         )
+
 
         # Cross Attention
         xi = x
@@ -267,17 +274,19 @@ class Misaka_decoder_cache(Misaka_decoder):
             inputs=x,
             layer=Dropout,
             rate=self.dropout_rate,
-            name="%s-Dropout" % cross_attention_name,
+            name=f"{cross_attention_name}-Dropout",
         )
-        x = self.apply(inputs=[xi, x], layer=Add, name="%s-Add" % cross_attention_name)
+
+        x = self.apply(inputs=[xi, x], layer=Add, name=f"{cross_attention_name}-Add")
         x = self.apply(
             inputs=x,
             layer=LayerNormalization,
             zero_mean=False,
             scale=False,
             offset=False,
-            name="%s-Norm" % cross_attention_name,
+            name=f"{cross_attention_name}-Norm",
         )
+
 
         # GAU-2
         xi = x
@@ -310,17 +319,19 @@ class Misaka_decoder_cache(Misaka_decoder):
             inputs=x,
             layer=Dropout,
             rate=self.dropout_rate,
-            name="%s-Dropout" % self_attention_2_name,
+            name=f"{self_attention_2_name}-Dropout",
         )
-        x = self.apply(inputs=[xi, x], layer=Add, name="%s-Add" % self_attention_2_name)
+
+        x = self.apply(inputs=[xi, x], layer=Add, name=f"{self_attention_2_name}-Add")
         x = self.apply(
             inputs=x,
             layer=LayerNormalization,
             zero_mean=False,
             scale=False,
             offset=False,
-            name="%s-Norm" % self_attention_2_name,
+            name=f"{self_attention_2_name}-Norm",
         )
+
 
         return [c, x]
 

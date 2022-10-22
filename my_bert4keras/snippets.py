@@ -18,10 +18,7 @@ if not is_py2:
 def to_array(*args):
     """批量转numpy的array"""
     results = [np.array(a) for a in args]
-    if len(args) == 1:
-        return results[0]
-    else:
-        return results
+    return results[0] if len(args) == 1 else results
 
 
 def is_string(s):
@@ -574,16 +571,15 @@ class AutoRegressiveDecoder(object):
             end_counts = (output_ids == self.end_id).sum(1)  # 统计出现的end标记
             if output_ids.shape[1] >= self.minlen:  # 最短长度判断
                 best = output_scores.argmax()  # 得分最大的那个
-                if is_end[best] and end_counts[best] >= min_ends:  # 如果已经终止
+                if is_end[best] and end_counts[best] >= min_ends:
                     return output_ids[best]  # 直接输出
-                else:  # 否则，只保留未完成部分
-                    flag = ~is_end | (end_counts < min_ends)  # 标记未完成序列
-                    if not flag.all():  # 如果有已完成的
-                        inputs = [i[flag] for i in inputs]  # 扔掉已完成序列
-                        output_ids = output_ids[flag]  # 扔掉已完成序列
-                        output_scores = output_scores[flag]  # 扔掉已完成序列
-                        end_counts = end_counts[flag]  # 扔掉已完成end计数
-                        topk = flag.sum()  # topk相应变化
+                flag = ~is_end | (end_counts < min_ends)  # 标记未完成序列
+                if not flag.all():  # 如果有已完成的
+                    inputs = [i[flag] for i in inputs]  # 扔掉已完成序列
+                    output_ids = output_ids[flag]  # 扔掉已完成序列
+                    output_scores = output_scores[flag]  # 扔掉已完成序列
+                    end_counts = end_counts[flag]  # 扔掉已完成end计数
+                    topk = flag.sum()  # topk相应变化
         # 达到长度直接输出
         return output_ids[output_scores.argmax()]
 
@@ -833,11 +829,10 @@ class Hook:
         等效于 import uniout （自动识别Python版本，Python3
         下则无操作。）
         """
-        if attr == "uniout":
-            if is_py2:
-                import uniout
-        else:
+        if attr != "uniout":
             return getattr(self.module, attr)
+        if is_py2:
+            import uniout
 
 
 Hook.__name__ = __name__

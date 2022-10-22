@@ -66,9 +66,7 @@ result=generate.writer([text.replace('\n', '氼')],#文本数据就是上面的d
                max_len=max_len,
                repeat_punish=repeat_punish)#检查重复解码
 end=time.time()
-s=''
-for t in text.split('\n'):
-    s+='\t'+t+'\n'
+s = ''.join('\t'+t+'\n' for t in text.split('\n'))
 text=s
 for i in range(nums):
     print(text)
@@ -76,4 +74,4 @@ for i in range(nums):
     for t in result[i].split('氼'):
         print('\t'+t)
     print('*******************************************************************************')
-print('消耗时间'+str(end-start))
+print(f'消耗时间{str(end - start)}')

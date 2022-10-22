@@ -39,10 +39,7 @@ class GatedAttentionUnit_cross(Layer):
         self.kernel_initializer = initializers.get(kernel_initializer)
 
     def initializer(self, shape, dtype=None, order=3, gain=1.0):
-        if shape[0] > 10000 or shape[0] < 10:
-            hidden_size = shape[1]
-        else:
-            hidden_size = shape[0]
+        hidden_size = shape[1] if shape[0] > 10000 or shape[0] < 10 else shape[0]
         gain *= (self.num_hidden_layers * 5 / 2) ** (-1.0 / order)
         stddev = 1.13684723 / hidden_size**0.5 * gain
         return K.truncated_normal(shape, stddev=stddev)
@@ -100,9 +97,7 @@ class GatedAttentionUnit_cross(Layer):
         A = attention_normalize(a, -1, self.normalization)
         if self.attention_dropout:
             A = Dropout(self.attention_dropout)(A)
-        # 计算输出
-        o = self.o_dense(u * tf.einsum("bmn,bnd->bmd", A, v))
-        return o
+        return self.o_dense(u * tf.einsum("bmn,bnd->bmd", A, v))
 
     def compute_mask(self, inputs, mask=None):
         return mask
@@ -143,10 +138,9 @@ class Misaka_encoder(Misaka_Base):
 
     def get_inputs(self):
         """Misaka的Encoder的输入只有token_ids"""
-        x_in = self.apply(
+        return self.apply(
             layer=Input, shape=(self.sequence_length,), name="Encoder-Input-Token"
         )
-        return x_in
 
     def apply_embeddings(self, inputs):
         """
@@ -212,17 +206,19 @@ class Misaka_encoder(Misaka_Base):
             inputs=x,
             layer=Dropout,
             rate=self.dropout_rate,
-            name="%s-Dropout" % attention_name,
+            name=f"{attention_name}-Dropout",
         )
-        x = self.apply(inputs=[xi, x], layer=Add, name="%s-Add" % attention_name)
+
+        x = self.apply(inputs=[xi, x], layer=Add, name=f"{attention_name}-Add")
         x = self.apply(
             inputs=x,
             layer=LayerNormalization,
             zero_mean=False,
             scale=False,
             offset=False,
-            name="%s-Norm" % attention_name,
+            name=f"{attention_name}-Norm",
         )
+
 
         return x
 
@@ -247,10 +243,7 @@ class Misaka_decoder(LM_Mask, Misaka_Base):
         self.num_hidden_layers = self.num_hidden_layers // 2
 
     def initializer(self, shape, dtype=None, order=3, gain=1.0):
-        if shape[0] > 10000 or shape[0] < 10:
-            hidden_size = shape[1]
-        else:
-            hidden_size = shape[0]
+        hidden_size = shape[1] if shape[0] > 10000 or shape[0] < 10 else shape[0]
         gain *= (self.num_hidden_layers * 5) ** (-1.0 / order)
         stddev = 1.13684723 / hidden_size**0.5 * gain
         return K.truncated_normal(shape, stddev=stddev)
@@ -334,17 +327,19 @@ class Misaka_decoder(LM_Mask, Misaka_Base):
             inputs=x,
             layer=Dropout,
             rate=self.dropout_rate,
-            name="%s-Dropout" % self_attention_1_name,
+            name=f"{self_attention_1_name}-Dropout",
         )
-        x = self.apply(inputs=[xi, x], layer=Add, name="%s-Add" % self_attention_1_name)
+
+        x = self.apply(inputs=[xi, x], layer=Add, name=f"{self_attention_1_name}-Add")
         x = self.apply(
             inputs=x,
             layer=LayerNormalization,
             zero_mean=False,
             scale=False,
             offset=False,
-            name="%s-Norm" % self_attention_1_name,
+            name=f"{self_attention_1_name}-Norm",
         )
+
 
         # Cross Attention
         xi = x
@@ -364,17 +359,19 @@ class Misaka_decoder(LM_Mask, Misaka_Base):
             inputs=x,
             layer=Dropout,
             rate=self.dropout_rate,
-            name="%s-Dropout" % cross_attention_name,
+            name=f"{cross_attention_name}-Dropout",
         )
-        x = self.apply(inputs=[xi, x], layer=Add, name="%s-Add" % cross_attention_name)
+
+        x = self.apply(inputs=[xi, x], layer=Add, name=f"{cross_attention_name}-Add")
         x = self.apply(
             inputs=x,
             layer=LayerNormalization,
             zero_mean=False,
             scale=False,
             offset=False,
-            name="%s-Norm" % cross_attention_name,
+            name=f"{cross_attention_name}-Norm",
         )
+
 
         # GAU-2
         xi = x
@@ -400,17 +397,19 @@ class Misaka_decoder(LM_Mask, Misaka_Base):
             inputs=x,
             layer=Dropout,
             rate=self.dropout_rate,
-            name="%s-Dropout" % self_attention_2_name,
+            name=f"{self_attention_2_name}-Dropout",
         )
-        x = self.apply(inputs=[xi, x], layer=Add, name="%s-Add" % self_attention_2_name)
+
+        x = self.apply(inputs=[xi, x], layer=Add, name=f"{self_attention_2_name}-Add")
         x = self.apply(
             inputs=x,
             layer=LayerNormalization,
             zero_mean=False,
             scale=False,
             offset=False,
-            name="%s-Norm" % self_attention_2_name,
+            name=f"{self_attention_2_name}-Norm",
         )
+
 
         return [c, x]
 
@@ -465,8 +464,8 @@ class Misaka(Misaka_Base):
         kwargs["layers"] = self.layers
         e_name, d_name = "Misaka_encoder", "Misaka_decoder"
         if "name" in kwargs:
-            e_name = "%s_%s" % (kwargs["name"], e_name)
-            d_name = "%s_%s" % (kwargs["name"], d_name)
+            e_name = f'{kwargs["name"]}_{e_name}'
+            d_name = f'{kwargs["name"]}_{d_name}'
             del kwargs["name"]  # 防止重复传参
         self._encoder = Misaka_encoder(name=e_name, **kwargs)
         self._decoder = Misaka_decoder(name=d_name, **kwargs)
@@ -496,8 +495,8 @@ class Misaka_NAT(Misaka_Base):
         kwargs["layers"] = self.layers
         e_name, d_name = "Misaka_encoder", "Misaka_decoder"
         if "name" in kwargs:
-            e_name = "%s_%s" % (kwargs["name"], e_name)
-            d_name = "%s_%s" % (kwargs["name"], d_name)
+            e_name = f'{kwargs["name"]}_{e_name}'
+            d_name = f'{kwargs["name"]}_{d_name}'
             del kwargs["name"]  # 防止重复传参
         self._encoder = Misaka_encoder(name=e_name, **kwargs)
         self._decoder = Misaka_decoder_NAT(name=d_name, **kwargs)

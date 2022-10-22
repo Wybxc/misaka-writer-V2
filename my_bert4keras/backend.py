@@ -295,10 +295,12 @@ def apply_rotary_position_embeddings(sinusoidal, *tensors):
     其中，sinusoidal.shape=[b, n, d]，tensors为tensor的列表，而
     tensor.shape=[b, n, ..., d]。
     """
-    assert len(tensors) > 0, "at least one input tensor"
+    assert tensors, "at least one input tensor"
     assert all(
-        [K.int_shape(tensor) == K.int_shape(tensors[0]) for tensor in tensors[1:]]
+        K.int_shape(tensor) == K.int_shape(tensors[0])
+        for tensor in tensors[1:]
     ), "all tensors must have the same shape"
+
     ndim = K.ndim(tensors[0])
     sinusoidal = align(sinusoidal, [0, 1, -1], ndim)
     cos_pos = K.repeat_elements(sinusoidal[..., 1::2], 2, -1)

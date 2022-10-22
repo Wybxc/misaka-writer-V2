@@ -18,21 +18,20 @@ def load_vocab(dict_path, encoding="utf-8", simplified=False, startswith=None):
             token = token[0] if token else line.strip()
             token_dict[token] = len(token_dict)
 
-    if simplified:  # 过滤冗余部分token
-        new_token_dict, keep_tokens = {}, []
-        startswith = startswith or []
-        for t in startswith:
+    if not simplified:
+        return token_dict
+    new_token_dict, keep_tokens = {}, []
+    startswith = startswith or []
+    for t in startswith:
+        new_token_dict[t] = len(new_token_dict)
+        keep_tokens.append(token_dict[t])
+
+    for t, _ in sorted(token_dict.items(), key=lambda s: s[1]):
+        if t not in new_token_dict and not Tokenizer._is_redundant(t):
             new_token_dict[t] = len(new_token_dict)
             keep_tokens.append(token_dict[t])
 
-        for t, _ in sorted(token_dict.items(), key=lambda s: s[1]):
-            if t not in new_token_dict and not Tokenizer._is_redundant(t):
-                new_token_dict[t] = len(new_token_dict)
-                keep_tokens.append(token_dict[t])
-
-        return new_token_dict, keep_tokens
-    else:
-        return token_dict
+    return new_token_dict, keep_tokens
 
 
 def save_vocab(dict_path, token_dict, encoding="utf-8"):
@@ -173,8 +172,8 @@ class Tokenizer(TokenizerBase):
 
         for token in ["pad", "unk", "mask", "start", "end"]:
             try:
-                _token_id = token_dict[getattr(self, "_token_%s" % token)]
-                setattr(self, "_token_%s_id" % token, _token_id)
+                _token_id = token_dict[getattr(self, f"_token_{token}")]
+                setattr(self, f"_token_{token}_id", _token_id)
             except:
                 pass
 
@@ -210,7 +209,7 @@ class Tokenizer(TokenizerBase):
         text = re.sub("' (re|m|s|t|ve|d|ll) ", "'\\1 ", text)
         punctuation = self._cjk_punctuation() + "+-/={(<["
         punctuation_regex = "|".join([re.escape(p) for p in punctuation])
-        punctuation_regex = "(%s) " % punctuation_regex
+        punctuation_regex = f"({punctuation_regex}) "
         text = re.sub(punctuation_regex, "\\1", text)
         text = re.sub("(\d\.) (\d)", "\\1\\2", text)
 
@@ -233,7 +232,7 @@ class Tokenizer(TokenizerBase):
         spaced = ""
         for ch in text:
             if self._is_punctuation(ch) or self._is_cjk_character(ch):
-                spaced += " " + ch + " "
+                spaced += f" {ch} "
             elif self._is_space(ch):
                 spaced += " "
             elif ord(ch) == 0 or ord(ch) == 0xFFFD or self._is_control(ch):
@@ -258,25 +257,21 @@ class Tokenizer(TokenizerBase):
             while end > start:
                 sub = word[start:end]
                 if start > 0:
-                    sub = "##" + sub
+                    sub = f"##{sub}"
                 if sub in self._token_dict:
                     break
                 end -= 1
             if start == end:
                 return [word]
-            else:
-                tokens.append(sub)
-                start = end
+            tokens.append(sub)
+            start = end
 
         return tokens
 
     @staticmethod
     def stem(token):
         """获取token的“词干”（如果是##开头，则自动去掉##）"""
-        if token[:2] == "##":
-            return token[2:]
-        else:
-            return token
+        return token[2:] if token[:2] == "##" else token
 
     @staticmethod
     def _is_space(ch):
@@ -395,9 +390,9 @@ class SpTokenizer(TokenizerBase):
 
         for token in ["pad", "unk", "mask", "start", "end"]:
             try:
-                _token = getattr(self, "_token_%s" % token)
+                _token = getattr(self, f"_token_{token}")
                 _token_id = self.sp_model.piece_to_id(_token)
-                setattr(self, "_token_%s_id" % token, _token_id)
+                setattr(self, f"_token_{token}_id", _token_id)
             except:
                 pass
 
@@ -407,10 +402,7 @@ class SpTokenizer(TokenizerBase):
 
     def id_to_token(self, i):
         """id转换为对应的token"""
-        if i < self._vocab_size:
-            return self.sp_model.id_to_piece(i)
-        else:
-            return ""
+        return self.sp_model.id_to_piece(i) if i < self._vocab_size else ""
 
     def decode(self, ids):
         """转为可读文本"""
@@ -426,8 +418,7 @@ class SpTokenizer(TokenizerBase):
         if self._pre_tokenize is not None:
             text = " ".join(self._pre_tokenize(text))
 
-        tokens = self.sp_model.encode_as_pieces(text)
-        return tokens
+        return self.sp_model.encode_as_pieces(text)
 
     def _is_special(self, i):
         """判断是不是有特殊含义的符号"""

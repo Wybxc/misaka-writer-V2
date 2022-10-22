@@ -65,10 +65,7 @@ if (not is_tf_keras) and keras.__version__ < "2.3":
             trainable = getattr(self, "trainable", True)
             non_trainable_weights = super(Layer, self).non_trainable_weights[:]
             for l in getattr(self, "_layers", []):
-                if trainable:
-                    non_trainable_weights += l.non_trainable_weights
-                else:
-                    non_trainable_weights += l.weights
+                non_trainable_weights += l.non_trainable_weights if trainable else l.weights
             return non_trainable_weights
 
     if keras.__version__ < "2.2.5":
@@ -129,12 +126,11 @@ class GlobalAveragePooling1D(keras.layers.GlobalAveragePooling1D):
 
     def call(self, inputs, mask=None):
         axis = 1 if self.data_format == "channels_last" else 2
-        if mask is not None:
-            mask = K.cast(mask, K.floatx())
-            mask = mask[..., None] if axis == 1 else mask[:, None]
-            return K.sum(inputs * mask, axis=axis) / K.sum(mask, axis=axis)
-        else:
+        if mask is None:
             return K.mean(inputs, axis=axis)
+        mask = K.cast(mask, K.floatx())
+        mask = mask[..., None] if axis == 1 else mask[:, None]
+        return K.sum(inputs * mask, axis=axis) / K.sum(mask, axis=axis)
 
 
 class GlobalMaxPooling1D(keras.layers.GlobalMaxPooling1D):
@@ -163,14 +159,13 @@ class Embedding(keras.layers.Embedding):
 
     def compute_mask(self, inputs, mask=None):
         """为了适配T5，保证第一个token不被mask"""
-        if K.ndim(inputs) == 2:
-            mask = super(Embedding, self).compute_mask(inputs, mask)
-            if mask is not None:
-                mask1 = K.ones_like(mask[:, :1], dtype="bool")
-                mask2 = mask[:, 1:]
-                return K.concatenate([mask1, mask2], 1)
-        else:
+        if K.ndim(inputs) != 2:
             return mask
+        mask = super(Embedding, self).compute_mask(inputs, mask)
+        if mask is not None:
+            mask1 = K.ones_like(mask[:, :1], dtype="bool")
+            mask2 = mask[:, 1:]
+            return K.concatenate([mask1, mask2], 1)
 
     def call(self, inputs, mode="embedding"):
         """新增mode参数，可以为embedding或dense。如果为embedding，
@@ -178,9 +173,8 @@ class Embedding(keras.layers.Embedding):
         """
         if mode == "embedding":
             return super(Embedding, self).call(inputs)
-        else:
-            kernel = K.transpose(self.embeddings)
-            return K.dot(inputs, kernel)
+        kernel = K.transpose(self.embeddings)
+        return K.dot(inputs, kernel)
 
     def compute_output_shape(self, input_shape):
         """关于判据，本来是通过缓存call时的mode参数来判断的，但是后来发现
@@ -284,10 +278,7 @@ class ScaleOffset(Layer):
         return inputs
 
     def compute_output_shape(self, input_shape):
-        if self.conditional:
-            return input_shape[0]
-        else:
-            return input_shape
+        return input_shape[0] if self.conditional else input_shape
 
     def get_config(self):
         config = {
@@ -323,8 +314,8 @@ class Concatenate1D(Layer):
             return K.concatenate(masks, axis=1)
 
     def compute_output_shape(self, input_shape):
-        if all([shape[1] for shape in input_shape]):
-            seq_len = sum([shape[1] for shape in input_shape])
+        if all(shape[1] for shape in input_shape):
+            seq_len = sum(shape[1] for shape in input_shape)
             return (input_shape[0][0], seq_len, input_shape[0][2])
         else:
             return (input_shape[0][0], None, input_shape[0][2])
@@ -400,9 +391,8 @@ class BatchConcat(Layer):
     """
 
     def compute_mask(self, inputs, mask=None):
-        if isinstance(mask, list):
-            if all([m is not None for m in mask]):
-                return K.concatenate(mask, 0)
+        if isinstance(mask, list) and all(m is not None for m in mask):
+            return K.concatenate(mask, 0)
 
     def call(self, inputs):
         return K.concatenate(inputs, 0)
@@ -472,9 +462,7 @@ class MultiHeadAttention(Layer):
                 主要是防止attention读取到padding信息。
         """
         q, k, v = inputs[:3]
-        q_mask, v_mask = None, None
-        if mask is not None:
-            q_mask, v_mask = mask[0], mask[2]
+        q_mask, v_mask = (mask[0], mask[2]) if mask is not None else (None, None)
         # 线性变换
         qw = self.q_dense(q)
         kw = self.k_dense(k)
@@ -490,10 +478,7 @@ class MultiHeadAttention(Layer):
         # 完成输出
         o = self.o_dense(K.flatten(o, 2))
         # 返回结果
-        if self.return_attention_scores:
-            return [o, a]
-        else:
-            return o
+        return [o, a] if self.return_attention_scores else o
 
     def pay_attention_to(self, inputs, mask=None, **kwargs):
         """实现标准的乘性多头注意力
@@ -554,10 +539,7 @@ class MultiHeadAttention(Layer):
 
     def compute_mask(self, inputs, mask=None):
         if mask is not None:
-            if self.return_attention_scores:
-                return [mask[0], None]
-            else:
-                return mask[0]
+            return [mask[0], None] if self.return_attention_scores else mask[0]
 
     def get_config(self):
         config = {
@@ -652,15 +634,10 @@ class GatedAttentionUnit(Layer):
         A = attention_normalize(a, -1, self.normalization)
         if self.attention_dropout:
             A = Dropout(self.attention_dropout)(A)
-        # 计算输出
-        o = self.o_dense(u * tf.einsum("bmn,bnd->bmd", A, v))
-        return o
+        return self.o_dense(u * tf.einsum("bmn,bnd->bmd", A, v))
 
     def compute_mask(self, inputs, mask=None):
-        if isinstance(mask, list):
-            return mask[0]
-        else:
-            return mask
+        return mask[0] if isinstance(mask, list) else mask
 
     def compute_output_shape(self, input_shape):
         if isinstance(input_shape[0], (list, tuple)):
@@ -767,11 +744,10 @@ class PositionEmbedding(Layer):
             embeddings_x = K.gather(embeddings, position_ids // self.input_dim)
             embeddings_y = K.gather(embeddings, position_ids % self.input_dim)
             embeddings = alpha * embeddings_x + (1 - alpha) * embeddings_y
+        elif self.custom_position_ids:
+            embeddings = K.gather(self.embeddings, position_ids)
         else:
-            if self.custom_position_ids:
-                embeddings = K.gather(self.embeddings, position_ids)
-            else:
-                embeddings = self.embeddings[None, :seq_len]
+            embeddings = self.embeddings[None, :seq_len]
 
         if self.merge_mode == "add":
             return inputs + embeddings
@@ -1017,7 +993,7 @@ class FeedForward(Layer):
                 use_bias=self.use_bias,
                 kernel_initializer=self.kernel_initializer,
             )
-            setattr(self, "i%s_dense" % i, i_dense)
+            setattr(self, f"i{i}_dense", i_dense)
 
         self.o_dense = Dense(
             units=output_dim,
@@ -1029,7 +1005,7 @@ class FeedForward(Layer):
     def call(self, inputs):
         x = self.i0_dense(inputs)
         for i in range(1, len(self.activation)):
-            x = x * getattr(self, "i%s_dense" % i)(inputs)
+            x = x * getattr(self, f"i{i}_dense")(inputs)
         x = self.o_dense(x)
         return x
 
@@ -1225,9 +1201,8 @@ class MaximumEntropyMarkovModel(Layer):
     def reverse_sequence(self, inputs, mask=None):
         if mask is None:
             return [x[:, ::-1] for x in inputs]
-        else:
-            length = K.cast(K.sum(mask, 1), "int32")
-            return [tf.reverse_sequence(x, length, seq_axis=1) for x in inputs]
+        length = K.cast(K.sum(mask, 1), "int32")
+        return [tf.reverse_sequence(x, length, seq_axis=1) for x in inputs]
 
     def basic_loss(self, y_true, y_pred, go_backwards=False):
         """y_true需要是整数形式（非one hot）"""

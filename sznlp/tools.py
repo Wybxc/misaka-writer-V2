@@ -92,10 +92,7 @@ class seq2seq_Generate:
         else:
             self.start_token = tokenizer._token_start_id
 
-        if end_token != None:
-            self.end_token = end_token
-        else:
-            self.end_token = tokenizer._token_end_id
+        self.end_token = end_token if end_token != None else tokenizer._token_end_id
 
     def encoder_predict(self, data, batch_size=32):
         # 编码
